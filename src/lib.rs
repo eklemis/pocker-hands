@@ -1,38 +1,150 @@
 use std::cmp::Ordering;
+use std::collections::HashMap;
 /// Struct representation of a single hand
+#[derive(Debug, PartialEq)]
 enum CardRank {
-    ROYAL_FLUSH = 1,
-    STRAIGHT_FLUSH = 2,
-    FOUR_OF_A_KIND = 3,
-    FULL_HOUSE = 4,
-    FLUSH = 5,
-    STRAIGHT = 6,
-    THREE_OF_A_KIND = 7,
-    TWO_PAIRS = 8,
-    ONE_PAIR = 9,
-    HIGH_CARD = 10,
+    RoyalFlush = 1,
+    StraightFlush = 2,
+    FourOfAKind = 3,
+    FullHouse = 4,
+    Flush = 5,
+    Straight = 6,
+    ThreeOfAKind = 7,
+    TwoPairs = 8,
+    OnePair = 9,
+    HighCard = 10,
 }
 
 struct Hand {
     origin: String,
     origin_translated: Vec<Card>,
-    ordered: Vec<Card>,
-    ranked_card: Vec<Card>,
-    rank: CardRank,
+    pub ordered: Vec<Card>,
 }
 impl Hand {
-    pub fn new() {}
+    pub fn new(hand_str: &str) -> Self {
+        let translated = Hand::translate_to_cards(hand_str);
+        let mut ordered = Hand::translate_to_cards(hand_str);
+        ordered.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        println!("{:?}", &ordered);
+        Hand {
+            origin: String::from(hand_str),
+            origin_translated: translated,
+            ordered: ordered,
+        }
+    }
+    pub fn counted_highest_card(&self) -> &Card {
+        &self.ordered[4]
+    }
+    fn translate_to_cards(hand_str: &str) -> Vec<Card> {
+        let mut cards = Vec::new();
+        for card_str in hand_str.split(" ") {
+            cards.push(Card::new(card_str))
+        }
+        cards
+    }
+    fn get_rank(&self) -> CardRank {
+        //determine rank of the hand
+        // Start From
+        // 10. HIGH CARDS
+        let mut same_all_suit = true;
+        let mut is_straight = true;
+        let mut is_straight_low = false;
+
+        let mut composition = HashMap::new();
+
+        //suite for shape
+        let mut prev_suit = self.ordered.get(0).unwrap().get_suit();
+        let mut prev_value = self.ordered.get(0).unwrap().get_value();
+        for (i, card) in self.ordered.iter().enumerate() {
+            let suit = card.get_suit();
+            let value = card.get_value();
+            if is_straight && i == 4 {
+                if value == 14 {
+                    is_straight_low = true;
+                }
+            }
+            if i > 0 {
+                if prev_suit != suit {
+                    same_all_suit = false;
+                }
+                if prev_value + 1 != value {
+                    is_straight = false;
+                }
+            }
+
+            let count = composition.entry(value.to_string()).or_insert(0);
+            *count += 1;
+
+            prev_suit = suit;
+            prev_value = value;
+        }
+
+        let idx1 = &self.ordered.get(0).unwrap().get_value().to_string();
+        let idx2 = &self.ordered.get(1).unwrap().get_value().to_string();
+
+        let count1 = composition.get(idx1).copied().unwrap_or(0);
+        let count2 = composition.get(idx2).copied().unwrap_or(0);
+
+        if composition.len() == 2 {
+            //3. FOUR OF A KIND
+            if count1 == 4 || count2 == 4 {
+                return CardRank::FourOfAKind;
+            }
+
+            //4. FULL HOUSE
+            if count1 == 3 || count2 == 3 {
+                return CardRank::FullHouse;
+            }
+        } else if composition.len() == 3 {
+            let idx3 = &self.ordered.get(2).unwrap().get_value().to_string();
+            let count3 = composition.get(idx3).copied().unwrap_or(0);
+            //7. THREE OF A KIND
+            if count1 == 3 || count2 == 3 || count3 == 3 {
+                return CardRank::ThreeOfAKind;
+            }
+            //8. TWO PAIR
+            if (count1 == 2 && count2 == 2)
+                || (count1 == 2 && count3 == 2)
+                || (count2 == 2 && count3 == 2)
+            {
+                return CardRank::TwoPairs;
+            }
+        } else if composition.len() == 4 {
+            //9. ONE PAIR
+            return CardRank::OnePair;
+        } else if composition.len() == 5 {
+            //1. ROYAL FLUSH
+            if is_straight && self.ordered.get(0).unwrap().get_value() == 10 {
+                return CardRank::RoyalFlush;
+            }
+            //2. STRAIGHT FLUSH
+            if (is_straight || is_straight_low) && same_all_suit {
+                return CardRank::StraightFlush;
+            }
+            //6. STRAIGHT
+            if is_straight || is_straight_low {
+                return CardRank::Straight;
+            }
+            //5. FLUSH
+            if same_all_suit {
+                return CardRank::Flush;
+            }
+        }
+        return CardRank::HighCard;
+    }
 }
 
-#[derive(Eq)]
+#[derive(Eq, Debug)]
 struct Card {
     //the card string representation. example:4S or 5H
     str_rep: String,
     value: u8,
+    suit: char,
 }
 impl Card {
     fn new(str_rep: &str) -> Self {
         let left_str = &str_rep[0..str_rep.len() - 1];
+        let right_chr = str_rep.replace(left_str, "").chars().nth(0).unwrap();
         let number = match left_str {
             "A" => 14,
             "K" => 13,
@@ -43,7 +155,17 @@ impl Card {
         Card {
             str_rep: String::from(left_str),
             value: number,
+            suit: right_chr,
         }
+    }
+    pub fn get_str_rep(&self) -> &String {
+        &self.str_rep
+    }
+    pub fn get_suit(&self) -> char {
+        self.suit
+    }
+    pub fn get_value(&self) -> u8 {
+        self.value
     }
 }
 impl PartialEq for Card {
@@ -53,7 +175,7 @@ impl PartialEq for Card {
 }
 impl PartialOrd for Card {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.value.cmp(&other.value))
+        Some(self.value.partial_cmp(&other.value).unwrap())
     }
     fn lt(&self, other: &Self) -> bool {
         self.value < other.value
@@ -86,6 +208,7 @@ pub fn winning_hands<'a>(hands: &[&'a str]) -> Vec<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::winning_hands;
+    use super::{CardRank, Hand};
     use std::collections::HashSet;
     fn hs_from<'a>(input: &[&'a str]) -> HashSet<&'a str> {
         let mut hs = HashSet::new();
@@ -103,6 +226,63 @@ mod tests {
         assert_eq!(hs_from(&winning_hands(input)), hs_from(expected))
     }
     #[test]
+    fn test_a_straight_low() {
+        assert_eq!(Hand::new("2S 4D 3D 5C AS").get_rank(), CardRank::Straight);
+    }
+    #[test]
+    fn test_high_card() {
+        assert_eq!(Hand::new("2S 5D 6D 8C 7S").get_rank(), CardRank::HighCard);
+    }
+    #[test]
+    fn test_royal_flush() {
+        assert_eq!(
+            Hand::new("10S JS QS KS AS").get_rank(),
+            CardRank::RoyalFlush
+        );
+    }
+    #[test]
+    fn test_straight_flush() {
+        assert_eq!(
+            Hand::new("4S 5S 6S 7S 8S").get_rank(),
+            CardRank::StraightFlush
+        );
+    }
+    #[test]
+    fn test_four_of_a_kind() {
+        assert_eq!(
+            Hand::new("9D 9S 9C 9H 2S").get_rank(),
+            CardRank::FourOfAKind
+        );
+    }
+    #[test]
+    fn test_full_house() {
+        assert_eq!(Hand::new("7S 7H 7D 9C 9S").get_rank(), CardRank::FullHouse);
+    }
+    #[test]
+    fn test_flush() {
+        assert_eq!(Hand::new("2S 8S 9S KS 4S").get_rank(), CardRank::Flush);
+    }
+    #[test]
+    fn test_straight() {
+        assert_eq!(Hand::new("8H 9D 10S JH QD").get_rank(), CardRank::Straight);
+    }
+    #[test]
+    fn test_threee_of_a_kind() {
+        assert_eq!(
+            Hand::new("AC AS AD 8H 7H").get_rank(),
+            CardRank::ThreeOfAKind
+        );
+    }
+    #[test]
+    fn test_two_pair() {
+        assert_eq!(Hand::new("KS KH 5S 5D AH").get_rank(), CardRank::TwoPairs);
+    }
+    #[test]
+    fn test_one_pair() {
+        assert_eq!(Hand::new("8C 8S QS 10D 7H").get_rank(), CardRank::OnePair);
+    }
+    #[test]
+    #[ignore]
     fn test_single_hand_always_wins() {
         test(&["4S 5S 7H 8D JC"], &["4S 5S 7H 8D JC"])
     }
